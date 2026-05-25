@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model-dir", default=os.getenv("MODEL_DIR", "models"))
     p.add_argument("--out", default=os.getenv("SUBMISSION_PATH", "submissions/submission.csv"))
     p.add_argument("--device", default=os.getenv("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"))
+    p.add_argument("--candidate-pool-size", type=int, default=int(os.getenv("CANDIDATE_POOL_SIZE", "4096")))
     return p.parse_args()
 
 
@@ -43,6 +44,21 @@ def make_user_batches(events: pd.DataFrame, eval_users: np.ndarray, item_to_row:
             mask[pad:] = 1.0
             seen = set(g["item_row"].astype(int).tolist())
         yield int(user_id), item_arr, eid_arr, mask, seen
+
+
+def build_candidate_pool(events: pd.DataFrame, items: pd.DataFrame, item_to_row: Dict[int, int], pool_size: int) -> np.ndarray:
+    counts = events.groupby("item_id", sort=False).size().sort_values(ascending=False)
+    pool: List[int] = [item_to_row[int(i)] for i in counts.index if int(i) in item_to_row]
+
+    if len(pool) < pool_size and "vertical_id" in items.columns:
+        allowed_verticals = {0, 2, 3, 4, 5, 7}
+        extra = items[items["vertical_id"].isin(allowed_verticals)]["item_id"].to_numpy()
+        pool.extend(item_to_row[int(i)] for i in extra if int(i) in item_to_row)
+    if len(pool) < pool_size:
+        pool.extend(range(len(items)))
+
+    deduped = list(dict.fromkeys(int(x) for x in pool))
+    return np.asarray(deduped[:pool_size], dtype=np.int64)
 
 
 def main() -> None:
@@ -70,14 +86,21 @@ def main() -> None:
 
     eval_users = load_eval_users(data_dir)
     events = load_events(data_dir, max_train_rows=0)
-    all_item_rows = torch.arange(len(item_ids), dtype=torch.long, device=device)
     k = int(meta.get("submission_k", 160))
-    item_chunk_size = int(meta.get("item_chunk_size", 65536))
     user_batch_size = int(meta.get("user_batch_size", 128))
+    items_df = load_item_features(data_dir)
+    candidate_rows_np = build_candidate_pool(events, items_df, item_to_row, int(args.candidate_pool_size))
+    candidate_rows = torch.tensor(candidate_rows_np, dtype=torch.long, device=device)
+    if len(candidate_rows_np) < k:
+        raise RuntimeError(f"Candidate pool has only {len(candidate_rows_np)} items, need at least {k}.")
+    print(f"Scoring neural candidate pool: {len(candidate_rows_np):,} items")
 
     rows: List[tuple[int, int]] = []
     stream = list(make_user_batches(events, eval_users, item_to_row, int(meta["max_seq_len"])))
     with torch.no_grad():
+        temperature = model.temperature.abs().clamp_min(0.02)
+        item_vec = model.item_encode(candidate_rows)
+        item_bias = model.item_bias(candidate_rows).squeeze(-1)
         for start in tqdm(range(0, len(stream), user_batch_size), desc="scoring users"):
             chunk = stream[start : start + user_batch_size]
             users = [x[0] for x in chunk]
@@ -85,24 +108,14 @@ def main() -> None:
             seq_eids = torch.tensor(np.stack([x[2] for x in chunk]), dtype=torch.long, device=device)
             mask = torch.tensor(np.stack([x[3] for x in chunk]), dtype=torch.float32, device=device)
             user_vec = model.user_encode(seq_items, seq_eids, mask)
-            best_scores = torch.full((len(users), k), -1e30, device=device)
-            best_rows = torch.zeros((len(users), k), dtype=torch.long, device=device)
-            temperature = model.temperature.abs().clamp_min(0.02)
-            for item_start in range(0, len(item_ids), item_chunk_size):
-                item_rows = all_item_rows[item_start : item_start + item_chunk_size]
-                item_vec = model.item_encode(item_rows)
-                scores = user_vec @ item_vec.T
-                scores = scores / temperature
-                scores = scores + model.item_bias(item_rows).squeeze(-1).unsqueeze(0)
-                for i, (_, _, _, _, seen) in enumerate(chunk):
-                    if seen:
-                        local_seen = [r - item_start for r in seen if item_start <= r < item_start + len(item_rows)]
-                        if local_seen:
-                            scores[i, torch.tensor(local_seen, dtype=torch.long, device=device)] = -1e30
-                merged_scores = torch.cat([best_scores, scores], dim=1)
-                merged_rows = torch.cat([best_rows, item_rows.unsqueeze(0).expand(len(users), -1)], dim=1)
-                best_scores, idx = torch.topk(merged_scores, k=k, dim=1)
-                best_rows = torch.gather(merged_rows, 1, idx)
+            scores = (user_vec @ item_vec.T) / temperature + item_bias.unsqueeze(0)
+            for i, (_, _, _, _, seen) in enumerate(chunk):
+                if seen:
+                    seen_idx = np.flatnonzero(np.isin(candidate_rows_np, np.fromiter(seen, dtype=np.int64)))
+                    if len(seen_idx):
+                        scores[i, torch.tensor(seen_idx, dtype=torch.long, device=device)] = -1e30
+            _, idx = torch.topk(scores, k=k, dim=1)
+            best_rows = candidate_rows[idx]
             pred_rows = best_rows.cpu().numpy()
             for user_id, rec_rows in zip(users, pred_rows):
                 rows.extend((user_id, int(item_ids[r])) for r in rec_rows)

@@ -143,6 +143,7 @@ def main() -> None:
             "submission_k": cfg.submission_k,
             "item_chunk_size": cfg.item_chunk_size,
             "user_batch_size": cfg.user_batch_size,
+            "candidate_pool_size": cfg.candidate_pool_size,
             "best_val_loss": best_val,
             "source": "AvitoTech ML CUP 2026 public data",
         },

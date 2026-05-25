@@ -19,4 +19,5 @@ class Config:
     submission_k: int = 160
     item_chunk_size: int = 65536
     user_batch_size: int = 128
+    candidate_pool_size: int = 4096
     seed: int = 42

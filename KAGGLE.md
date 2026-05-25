@@ -12,8 +12,8 @@ Inside a Kaggle notebook with that dataset and GPU enabled:
 git clone https://github.com/zoli801/avito-neural-recsys.git
 cd avito-neural-recsys
 python scripts/eda.py
-EPOCHS=8 BATCH_SIZE=1024 MAX_TRAIN_POSITIVES=3000000 python train.py
-python predict.py --out /kaggle/working/submission.csv
+EPOCHS=6 BATCH_SIZE=1024 MAX_TRAIN_POSITIVES=2000000 python train.py
+CANDIDATE_POOL_SIZE=4096 python predict.py --out /kaggle/working/submission.csv
 ```
 
-For a one-hour training run, increase `EPOCHS` or `MAX_TRAIN_POSITIVES` depending on the GPU session speed. The default path resolver automatically uses the Kaggle dataset path above, so `DATA_DIR` is optional there.
+This configuration is intended to finish in roughly 40 minutes on a Kaggle GPU session. Increase `EPOCHS`, `MAX_TRAIN_POSITIVES`, or `CANDIDATE_POOL_SIZE` if the session has more time. The default path resolver automatically uses the Kaggle dataset path above, so `DATA_DIR` is optional there.

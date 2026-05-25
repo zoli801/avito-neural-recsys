@@ -93,6 +93,7 @@ Environment variables:
 - `EPOCHS=5`
 - `BATCH_SIZE=768`
 - `MAX_TRAIN_POSITIVES=2000000`
+- `CANDIDATE_POOL_SIZE=4096`
 - `DEVICE=cuda`
 
 ## Neural-Only Claim
