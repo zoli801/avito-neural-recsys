@@ -16,4 +16,10 @@ EPOCHS=6 BATCH_SIZE=1024 MAX_TRAIN_POSITIVES=2000000 python train.py
 CANDIDATE_POOL_SIZE=4096 python predict.py --out /kaggle/working/submission.csv
 ```
 
+Or one command:
+
+```bash
+bash scripts/run_kaggle_40m.sh
+```
+
 This configuration is intended to finish in roughly 40 minutes on a Kaggle GPU session. Increase `EPOCHS`, `MAX_TRAIN_POSITIVES`, or `CANDIDATE_POOL_SIZE` if the session has more time. The default path resolver automatically uses the Kaggle dataset path above, so `DATA_DIR` is optional there.

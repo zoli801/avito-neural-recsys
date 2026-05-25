@@ -37,6 +37,12 @@ python predict.py
 
 The generated submission is written to `submissions/submission.csv`. In Kaggle the scripts automatically use `/kaggle/input/datasets/nikitakuznetsof/avito-ml-cup-2026` when `DATA_DIR` is not set.
 
+For the Kaggle GPU run used to create a submit-ready artifact:
+
+```bash
+bash scripts/run_kaggle_40m.sh
+```
+
 ## Docker
 
 ```bash
