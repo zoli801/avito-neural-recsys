@@ -1,0 +1,21 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+
+# Competition data and generated heavy artifacts.
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+submissions/*
+!submissions/.gitkeep
+
+# Local logs.
+runs/
+wandb/
+*.log
+
+# Python/test caches.
+.pytest_cache/
