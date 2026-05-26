@@ -1,0 +1,30 @@
+{
+  "train_partitions_used": 12,
+  "fresh_train_order": true,
+  "vocab_items": 420000,
+  "training_examples": 595884,
+  "eval_users": 94408,
+  "event_features": [
+    "recent item_id sequence",
+    "recent eid sequence",
+    "position"
+  ],
+  "item_features": [
+    "vertical_id",
+    "category_ext_y",
+    "region_id_y",
+    "loc_id_y",
+    "sid_0_y",
+    "sid_1_y",
+    "sid_2_y",
+    "sid_3_y"
+  ],
+  "candidate_sources": [
+    "fresh contact popularity",
+    "feature buckets",
+    "submission_popular.csv candidates if available"
+  ],
+  "trainable_models": [
+    "FeatureSeqNeuralRecommender"
+  ]
+}
