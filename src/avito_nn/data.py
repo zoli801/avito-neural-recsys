@@ -15,6 +15,16 @@ from torch.utils.data import Dataset
 
 EVENT_COLS = ["timestamp", "eid", "user_id", "item_id"]
 ITEM_ID_COL = "item_id"
+PREFERRED_ITEM_FEATURES = [
+    "vertical_id",
+    "category_ext_y",
+    "region_id_y",
+    "loc_id_y",
+    "sid_0_y",
+    "sid_1_y",
+    "sid_2_y",
+    "sid_3_y",
+]
 EVAL_EVENTS_NAMES = ["eval_user_events.pq", "eval_user_events.parquet", "eval_user_events.zip"]
 EVAL_USERS_NAMES = ["eval_users.csv", "eval_users.pq", "eval_users.parquet"]
 ITEM_FEATURE_NAMES = ["item_features.parquet", "item_features.pq"]
@@ -98,7 +108,16 @@ def load_eval_users(data_dir: Path) -> np.ndarray:
 
 def load_item_features(data_dir: Path) -> pd.DataFrame:
     path = find_existing(data_dir, ITEM_FEATURE_NAMES)
-    df = pd.read_parquet(path)
+    schema_cols = pd.read_parquet(path, columns=[]).columns.tolist()
+    if not schema_cols:
+        import pyarrow.parquet as pq
+
+        schema_cols = pq.ParquetFile(path).schema.names
+    cols = [ITEM_ID_COL] + [c for c in PREFERRED_ITEM_FEATURES if c in schema_cols]
+    if len(cols) == 1:
+        # Fallback for unexpected schemas: keep a compact prefix, never read the full 1.85GB payload.
+        cols = [ITEM_ID_COL] + [c for c in schema_cols if c != ITEM_ID_COL][:8]
+    df = pd.read_parquet(path, columns=cols)
     if ITEM_ID_COL not in df.columns:
         raise ValueError(f"{path} must contain {ITEM_ID_COL}")
     df = df.drop_duplicates(ITEM_ID_COL).reset_index(drop=True)
@@ -107,17 +126,7 @@ def load_item_features(data_dir: Path) -> pd.DataFrame:
 
 
 def choose_feature_columns(items: pd.DataFrame) -> List[str]:
-    preferred = [
-        "vertical_id",
-        "category_ext_y",
-        "region_id_y",
-        "loc_id_y",
-        "sid_0_y",
-        "sid_1_y",
-        "sid_2_y",
-        "sid_3_y",
-    ]
-    cols = [c for c in preferred if c in items.columns]
+    cols = [c for c in PREFERRED_ITEM_FEATURES if c in items.columns]
     if cols:
         return cols
     banned = {ITEM_ID_COL, "title", "description", "image", "text"}
