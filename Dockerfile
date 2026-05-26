@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     DATA_DIR=/data \
     MODEL_DIR=/app/models \
-    SUBMISSION_PATH=/app/submissions/submission.csv
+    SUBMISSION_PATH=/app/submission.csv
 
 WORKDIR /app
 

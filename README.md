@@ -1,107 +1,123 @@
-# AvitoTech ML CUP 2026: Neural Retrieval
+# AvitoTech ML CUP 2026: Neural-Only Recommender
 
-One reproducible end-to-end neural solution for the **"Лучшее нейросетевое решение"** nomination.
+Public repository for the additional nomination **"Лучшее нейросетевое решение"**.
 
-The model is a single PyTorch sequential recommender. It encodes a user's pre-cutoff event history with a Transformer encoder, encodes item metadata (`vertical_id`, category, geo ids and semantic ids) with learned embeddings, and trains with sampled-softmax next-contact retrieval. `predict.py` scores the catalog with the same network and writes `submission.csv` in the competition format.
+This solution uses a single end-to-end PyTorch neural recommender. It trains on user event sequences and item metadata, predicts next contact items, and writes `submission.csv` in the official `user_id,item_id` format.
 
-## Competition Facts
+## Status
 
-- Task: predict up to 160 relevant `item_id` values for each eval `user_id`.
-- Submission format: two CSV columns, `user_id,item_id`; pairs must be unique.
-- Metric: mean user-level `Recall@160`.
-- Public data: `item_features.parquet`, `contact_eids.csv`, `eval_users.csv`, `eval_user_events.zip`, and optional train partitions.
-- Official pages: [task](https://ods.ai/competitions/avitotechmlcup2026), [dataset](https://ods.ai/competitions/avitotechmlcup2026/dataset).
+The Kaggle notebook run produced a valid submission:
+
+- rows: `15,105,280`
+- eval users: `94,408`
+- recommendations per user: exactly `160`
+- duplicate `user_id,item_id` pairs: `0`
+- reported score from the run: `0.0005935261`
+
+Validation details are in `reports/submission_validation.json`. The generated CSV is large and ignored by git, but the local artifact is available at `submissions/submission.csv`.
+
+## Neural-Only Claim
+
+There is one trainable model: `FeatureSeqNeuralRecommender` in the standalone notebook and the matching PyTorch recommender implementation under `src/avito_nn/`.
+
+No CatBoost, LightGBM, matrix-factorization ensemble, blended ranker, or hand-tuned second-stage model is used. Candidate selection is deterministic and memory-bounded; final ranking is produced by the neural network.
 
 ## Repository Layout
 
 ```text
 .
-├── train.py                 # python train.py -> model artifacts
-├── predict.py               # python predict.py -> submissions/submission.csv
-├── src/avito_nn/            # data loading, model, train/predict implementation
-├── scripts/download_data.sh # downloads public core files
-├── scripts/eda.py           # produces reports/figures/*.png
-├── reports/                 # EDA outputs
-├── models/                  # generated model artifacts, ignored by git
-└── Dockerfile
+├── train.py
+├── predict.py
+├── Dockerfile
+├── notebooks/avito_neural_solution_submit.ipynb
+├── src/avito_nn/
+├── scripts/
+├── reports/submission_validation.json
+├── models/          # generated, git-ignored
+└── submissions/     # generated, git-ignored
 ```
 
-## Quick Start
+## Data
 
-```bash
-bash scripts/download_data.sh
-python scripts/eda.py
-python train.py
-python predict.py
+Kaggle dataset path used by the notebook:
+
+```text
+/kaggle/input/datasets/nikitakuznetsof/avito-ml-cup-2026
 ```
 
-The generated submission is written to `submissions/submission.csv`. In Kaggle the scripts automatically use `/kaggle/input/datasets/nikitakuznetsof/avito-ml-cup-2026` when `DATA_DIR` is not set.
+For Docker/local runs, mount the official data directory as `/data`. It should contain:
 
-For the Kaggle GPU run used to create a submit-ready artifact:
+```text
+item_features.parquet
+contact_eids.csv
+eval_users.csv
+eval_user_events/eval_user_events.pq
+train_*/train_data/part_*.parquet  # optional for larger runs
+```
+
+## Required Commands
+
+Inside the container:
 
 ```bash
-bash scripts/run_kaggle_40m.sh
+python train.py      # creates model artifacts in /app/models
+python predict.py    # creates /app/submission.csv
 ```
 
 ## Docker
 
 ```bash
 docker build -t avito-neural-recsys .
-docker run --rm --gpus all -v "$PWD/data:/data" -v "$PWD/models:/app/models" -v "$PWD/submissions:/app/submissions" avito-neural-recsys python train.py
-docker run --rm --gpus all -v "$PWD/data:/data" -v "$PWD/models:/app/models" -v "$PWD/submissions:/app/submissions" avito-neural-recsys python predict.py
+docker run --rm --gpus all \
+  -v /path/to/avito-data:/data \
+  -v "$PWD/models:/app/models" \
+  -v "$PWD:/app/out" \
+  avito-neural-recsys python train.py
+
+docker run --rm --gpus all \
+  -v /path/to/avito-data:/data \
+  -v "$PWD/models:/app/models" \
+  -v "$PWD:/app/out" \
+  avito-neural-recsys python predict.py --out /app/out/submission.csv
 ```
 
-CPU also works, but full-catalog prediction is intended for a GPU runtime.
+## Kaggle Notebook
 
-## Data
-
-Put the official files under `data/`:
+The exact notebook used for the successful run is:
 
 ```text
-data/
-├── item_features.parquet
-├── contact_eids.csv
-├── eval_users.csv
-└── eval_user_events.zip or eval_user_events.pq
+notebooks/avito_neural_solution_submit.ipynb
 ```
 
-On Kaggle, the attached dataset path from `main.ipynb` is supported directly:
+It is intentionally RAM-bounded:
 
-```text
-/kaggle/input/datasets/nikitakuznetsof/avito-ml-cup-2026/
-```
-
-Optional train partitions can be sampled by setting `MAX_TRAIN_ROWS`, but the default solution uses the published eval-user pre-cutoff history for a compact reproducible run.
-
-## EDA
-
-Run:
-
-```bash
-python scripts/eda.py
-```
-
-It writes:
-
-- `reports/figures/items_by_vertical.png`
-- `reports/figures/history_length.png`
-- `reports/figures/event_id_frequency.png`
-- `reports/figures/contacts_by_vertical.png`
-- `reports/eda_summary.csv`
+- streams a selected part of train/eval events;
+- builds a bounded item vocabulary;
+- reads `item_features.parquet` in batches only for vocabulary items;
+- trains one neural recommender;
+- writes `submission.csv` in the current directory.
 
 ## Reproducibility Knobs
 
-Environment variables:
+Useful environment variables for script runs:
 
-- `DATA_DIR=/data`
-- `MODEL_DIR=/app/models`
-- `SUBMISSION_PATH=/app/submissions/submission.csv`
-- `EPOCHS=5`
-- `BATCH_SIZE=768`
-- `MAX_TRAIN_POSITIVES=2000000`
-- `CANDIDATE_POOL_SIZE=4096`
-- `DEVICE=cuda`
+```bash
+DATA_DIR=/data
+MODEL_DIR=/app/models
+SUBMISSION_PATH=/app/submission.csv
+EPOCHS=4
+BATCH_SIZE=512
+CANDIDATE_POOL_SIZE=4096
+DEVICE=cuda
+```
 
-## Neural-Only Claim
+## Submission Format
 
-There is one trainable model: `AvitoNeuralRecommender`. No CatBoost, LightGBM, matrix-factorization ensemble, handcrafted ranker, or blended post-processing is used. Candidate scores in the final CSV come directly from the neural model.
+`predict.py` and the notebook both write:
+
+```csv
+user_id,item_id
+33,172768884
+33,5569823
+...
+```

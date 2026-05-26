@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate submission.csv with the trained neural recommender.")
     p.add_argument("--data-dir", default=default_data_dir())
     p.add_argument("--model-dir", default=os.getenv("MODEL_DIR", "models"))
-    p.add_argument("--out", default=os.getenv("SUBMISSION_PATH", "submissions/submission.csv"))
+    p.add_argument("--out", default=os.getenv("SUBMISSION_PATH", "submission.csv"))
     p.add_argument("--device", default=os.getenv("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"))
     p.add_argument("--candidate-pool-size", type=int, default=int(os.getenv("CANDIDATE_POOL_SIZE", "4096")))
     return p.parse_args()
